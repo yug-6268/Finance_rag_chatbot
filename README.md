@@ -15,6 +15,6 @@ A Retrieval-Augmented Generation (RAG) chatbot for finance and chartered account
 5. Create a .env file with your API keys: `GROQ_API_KEY=your_api_key_here`
 6. Add your PDFs to the data folder
 7. Run the application in following order:
-     ->: 'create_memory_for_llm.py'
-     ->: 'connect_memory_for_llm.p'
-     -> 3: 'medibot.py'
+     ->: 'code_to_create_memory.py'
+     ->: 'code_to_connect_memory.p'
+     -> 3: 'code_for_streamlit.py'
