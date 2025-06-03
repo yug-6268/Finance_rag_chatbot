@@ -1,68 +1,46 @@
-import os
-
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
+from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from dotenv import load_dotenv, find_dotenv
 
-# Load .env variables
+
+from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
-# Groq API Key
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL = "llama3-8b-8192" 
 
-# Step 1: Setup Groq LLM
-def load_llm(model_name):
-    return ChatGroq(
-        groq_api_key=os.environ.get("GROQ_API_KEY"),
-        model_name=model_name,
-        temperature=0.5
-    )
+# Step 1: Load raw PDF(s)
+DATA_PATH="data/"
+def load_pdf_files(data):
+    loader = DirectoryLoader(data,
+                             glob='*.pdf',
+                             loader_cls=PyPDFLoader)
+    
+    documents=loader.load()
+    return documents
 
-# Step 2: Custom Prompt
-CUSTOM_PROMPT_TEMPLATE = """
-Use the pieces of information provided in the context to answer the user's question.
-If you don't know the answer, just say that you don't know — don't try to make up an answer.
-Only respond based on the context provided.
+documents=load_pdf_files(data=DATA_PATH)
+#print("Length of PDF pages: ", len(documents))
 
-Context: {context}
-Question: {question}
 
-Answer:
-"""
+# Step 2: Create Chunks
+def create_chunks(extracted_data):
+    text_splitter=RecursiveCharacterTextSplitter(chunk_size=500,
+                                                 chunk_overlap=50)
+    text_chunks=text_splitter.split_documents(extracted_data)
+    return text_chunks
 
-def set_custom_prompt(template):
-    return PromptTemplate(template=template, input_variables=["context", "question"])
+text_chunks=create_chunks(extracted_data=documents)
+#print("Length of Text Chunks: ", len(text_chunks))
 
-# Step 3: Load Vector DB
-DB_FAISS_PATH = "vectorstore/db_faiss"
-embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# Step 3: Create Vector Embeddings 
 
-db = FAISS.load_local(
-    folder_path=DB_FAISS_PATH,
-    embeddings=embedding_model,
-    allow_dangerous_deserialization=True
-)
+def get_embedding_model():
+    embedding_model=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return embedding_model
 
-# Step 4: Create QA Chain
-qa_chain = RetrievalQA.from_chain_type(
-    llm=load_llm(GROQ_MODEL),
-    retriever=db.as_retriever(search_kwargs={'k': 3}),
-    return_source_documents=True,
-    chain_type="stuff",
-    chain_type_kwargs={
-        'prompt': set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)
-    }
-)
+embedding_model=get_embedding_model()
 
-# Step 5: Query it
-user_query = input("Write Query Here: ")
-response = qa_chain.invoke({'query': user_query})
-
-print("\n RESULT:\n", response["result"])
-print("\n SOURCE DOCUMENTS:")
-for doc in response["source_documents"]:
-    print("-", doc.metadata.get("source", "[Unknown source]"))
+# Step 4: Store embeddings in FAISS
+DB_FAISS_PATH="vectorstore/db_faiss"
+db=FAISS.from_documents(text_chunks, embedding_model)
+db.save_local(DB_FAISS_PATH)
